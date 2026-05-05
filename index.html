@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Drip Finder — AI Fashion Price Search</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f9f8f5;
+    --surface: #ffffff;
+    --border: #e5e3dc;
+    --text: #111;
+    --muted: #666;
+    --faint: #999;
+    --accent: #111;
+    --accent-fg: #e8ff47;
+    --blue: #185FA5;
+    --blue-light: #E6F1FB;
+    --green: #27500A;
+    --green-light: #EAF3DE;
+    --red: #791F1F;
+    --red-light: #FCEBEB;
+    --amber: #BA7517;
+    --amber-light: #FAEEDA;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111;
+      --surface: #1c1c1c;
+      --border: #2a2a2a;
+      --text: #f0f0f0;
+      --muted: #aaa;
+      --faint: #666;
+      --blue-light: #0c2a45;
+      --green-light: #142208;
+      --red-light: #2a0d0d;
+    }
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  .container { max-width: 880px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .header h1 { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; }
+  .header h1 span { color: var(--blue); }
+  .live-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .live-dot { width: 7px; height: 7px; background: #4ade80; border-radius: 50%; animation: blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:.3} }
+
+  .upload-section { margin-bottom: 1.5rem; }
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 3rem 1rem; text-align: center; cursor: pointer; transition: all 0.2s; position: relative; background: var(--surface); }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--blue); background: var(--blue-light); }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .upload-zone.has-img { padding: 0; overflow: hidden; border-style: solid; border-color: var(--border); }
+  .upload-zone.has-img img { width: 100%; max-height: 320px; object-fit: contain; display: block; background: var(--bg); }
+  .upload-icon { font-size: 36px; margin-bottom: 12px; }
+  .upload-zone p.main { font-size: 16px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .upload-zone p.sub { font-size: 13px; color: var(--muted); }
+
+  .api-strip { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 1.25rem; }
+  .api-tag { display: flex; align-items: center; gap: 5px; padding: 4px 11px; background: var(--surface); border: 1px solid var(--border); border-radius: 999px; font-size: 11px; color: var(--muted); }
+  .api-tag .dot { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; flex-shrink: 0; }
+
+  .analyze-btn { width: 100%; padding: 15px; background: var(--accent); color: var(--accent-fg); font-size: 15px; font-weight: 600; border: none; border-radius: var(--radius-sm); cursor: pointer; letter-spacing: 0.3px; transition: opacity 0.15s, transform 0.1s; margin-bottom: 2rem; }
+  .analyze-btn:hover:not(:disabled) { opacity: 0.9; }
+  .analyze-btn:active:not(:disabled) { transform: scale(0.99); }
+  .analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1.5rem; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { padding: 10px 18px; font-size: 14px; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; transition: all 0.15s; font-weight: 400; }
+  .tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+  .tab:hover:not(.active) { color: var(--text); }
+  .tab .badge { display: inline-block; background: var(--blue-light); color: var(--blue); font-size: 10px; padding: 1px 6px; border-radius: 999px; margin-left: 5px; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  .spinner-wrap { text-align: center; padding: 4rem 1rem; }
+  .spinner { width: 32px; height: 32px; border: 2.5px solid var(--border); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.65s linear infinite; margin: 0 auto 16px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-wrap p { font-size: 14px; color: var(--muted); }
+  .spinner-wrap small { display: block; font-size: 12px; color: var(--faint); margin-top: 4px; }
+
+  /* ID Card */
+  .id-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; margin-bottom: 1rem; }
+  .id-top { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 1.25rem; }
+  .id-emoji { width: 80px; height: 80px; background: var(--bg); border-radius: var(--radius-sm); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 36px; flex-shrink: 0; }
+  .id-info h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; margin-bottom: 4px; line-height: 1.2; }
+  .id-info .brand-line { font-size: 14px; color: var(--muted); margin-bottom: 10px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; }
+  .bdg { display: inline-flex; align-items: center; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+  .bdg-price { background: var(--blue-light); color: var(--blue); }
+  .bdg-in { background: var(--green-light); color: var(--green); }
+  .bdg-out { background: var(--red-light); color: var(--red); }
+  .bdg-type { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+  .bdg-live { background: var(--green-light); color: var(--green); }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
+
+  .official-link { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+  .official-link a { color: var(--blue); text-decoration: none; }
+  .official-link a:hover { text-decoration: underline; }
+
+  /* Value meter */
+  .val-meter { }
+  .val-row { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 8px; }
+  .val-row span { color: var(--muted); }
+  .val-row strong { font-weight: 600; color: var(--text); }
+  .track { height: 10px; background: var(--bg); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .fill { height: 100%; border-radius: 999px; transition: width 1.4s cubic-bezier(0.16,1,0.3,1); }
+  .track-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); margin-top: 5px; }
+  .val-summary { font-size: 14px; color: var(--muted); line-height: 1.65; margin-top: 12px; }
+
+  .live-source { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--faint); margin-top: 10px; }
+  .live-source::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #4ade80; }
+
+  /* Price grid */
+  .price-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(195px,1fr)); gap: 12px; }
+  .price-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.1rem; cursor: pointer; transition: border-color 0.15s, transform 0.1s; text-decoration: none; display: block; color: inherit; }
+  .price-card:hover { border-color: var(--blue); transform: translateY(-1px); }
+  .price-card .plat { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 500; }
+  .price-card .pname { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.35; margin-bottom: 8px; }
+  .price-card .pprice { font-size: 20px; font-weight: 700; color: var(--blue); letter-spacing: -0.5px; }
+  .price-card .pcond { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .price-card .psave { font-size: 12px; color: var(--green); margin-top: 6px; font-weight: 500; }
+  .price-card .pmore { font-size: 11px; color: var(--blue); margin-top: 8px; }
+
+  /* Alt price pct bar */
+  .pct-indicator { margin-top: 6px; }
+  .pct-bar { height: 3px; border-radius: 999px; }
+  .pct-label { font-size: 11px; margin-top: 2px; font-weight: 500; }
+
+  /* Reviews */
+  .rev-summary { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; display: flex; align-items: center; gap: 20px; }
+  .rev-big-score { font-size: 42px; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+  .rev-stars { font-size: 16px; color: #BA7517; margin-bottom: 3px; }
+  .rev-meta { font-size: 13px; color: var(--muted); }
+  .rev-sentiment { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; margin-top: 5px; }
+
+  .rev-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 10px; }
+  .rev-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .rev-author { font-size: 14px; font-weight: 600; }
+  .rev-platform { font-size: 12px; color: var(--faint); margin-top: 1px; }
+  .rev-rating { font-size: 13px; color: var(--muted); }
+  .rev-stars-sm { color: #BA7517; font-size: 13px; margin-bottom: 5px; }
+  .rev-title { font-size: 14px; font-weight: 600; margin-bottom: 5px; }
+  .rev-body { font-size: 14px; color: var(--muted); line-height: 1.65; }
+
+  .sec-label { font-size: 12px; font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+  .empty { text-align: center; padding: 3rem; font-size: 14px; color: var(--faint); }
+  .err-box { background: var(--red-light); border: 1px solid #F7C1C1; border-radius: var(--radius-sm); padding: 1rem 1.25rem; color: var(--red); font-size: 14px; line-height: 1.6; margin-bottom: 1rem; }
+
+  @media (max-width: 500px) {
+    .container { padding: 1rem; }
+    .price-grid { grid-template-columns: 1fr 1fr; }
+    .id-top { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Drip <span>Finder</span></h1>
+    <div class="live-indicator">
+      <span class="live-dot"></span> Live web search
+    </div>
+  </div>
+
+  <div class="upload-section">
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept="image/*" />
+      <div id="uploadPrompt">
+        <div class="upload-icon">📸</div>
+        <p class="main">Drop a photo of any clothing item</p>
+        <p class="sub">T-shirt · sneakers · watch · hat · sunglasses · cologne · wallet · hoodie · shorts · pants</p>
+      </div>
+      <img id="previewImg" style="display:none;" alt="Preview" />
+    </div>
+  </div>
+
+  <div class="api-strip">
+    <div class="api-tag"><span class="dot"></span> Claude Vision AI</div>
+    <div class="api-tag"><span class="dot"></span> Live web search</div>
+    <div class="api-tag"><span class="dot"></span> StockX prices</div>
+    <div class="api-tag"><span class="dot"></span> eBay listings</div>
+    <div class="api-tag"><span class="dot"></span> Depop / GOAT</div>
+    <div class="api-tag"><span class="dot"></span> Reddit reviews</div>
+    <div class="api-tag"><span class="dot"></span> Google Shopping</div>
+    <div class="api-tag"><span class="dot"></span> YouTube opinions</div>
+  </div>
+
+  <button class="analyze-btn" id="analyzeBtn" disabled>Identify item &amp; search live prices →</button>
+
+  <div id="resultsArea" style="display:none;">
+    <div class="tabs" id="tabBar">
+      <button class="tab active" data-tab="id">Identified item</button>
+      <button class="tab" data-tab="used">Used &amp; resale</button>
+      <button class="tab" data-tab="alts">Similar styles</button>
+      <button class="tab" data-tab="reviews">Reviews</button>
+    </div>
+    <div class="tab-panel active" id="tab-id"></div>
+    <div class="tab-panel" id="tab-used"></div>
+    <div class="tab-panel" id="tab-alts"></div>
+    <div class="tab-panel" id="tab-reviews"></div>
+  </div>
+
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const uploadZone = document.getElementById('uploadZone');
+const previewImg = document.getElementById('previewImg');
+const uploadPrompt = document.getElementById('uploadPrompt');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const resultsArea = document.getElementById('resultsArea');
+
+let b64 = null, mime = null;
+
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('drag'); loadFile(e.dataTransfer.files[0]); });
+fileInput.addEventListener('change', () => loadFile(fileInput.files[0]));
+
+function loadFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  mime = file.type;
+  const reader = new FileReader();
+  reader.onload = e => {
+    b64 = e.target.result.split(',')[1];
+    previewImg.src = e.target.result;
+    previewImg.style.display = 'block';
+    uploadPrompt.style.display = 'none';
+    uploadZone.classList.add('has-img');
+    analyzeBtn.disabled = false;
+    resultsArea.style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+document.getElementById('tabBar').addEventListener('click', e => {
+  const tab = e.target.closest('.tab');
+  if (!tab) return;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+});
+
+function loading(msg, sub) {
+  return `<div class="spinner-wrap"><div class="spinner"></div><p>${msg}</p><small>${sub || ''}</small></div>`;
+}
+function stars(n) { return '★'.repeat(Math.round(n || 0)) + '☆'.repeat(5 - Math.round(n || 0)); }
+function meterColor(s) { return s >= 70 ? '#4ade80' : s >= 45 ? '#f59e0b' : '#f87171'; }
+function meterBg(s) { return s >= 70 ? '#14532d' : s >= 45 ? '#78350f' : '#7f1d1d'; }
+
+async function callClaude(systemPrompt, messages, useSearch) {
+  const body = {
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 2500,
+    system: systemPrompt,
+    messages
+  };
+  if (useSearch) {
+    body.tools = [{ type: "web_search_20250305", name: "web_search" }];
+  }
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  const data = await res.json();
+  return data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+function parseJSON(raw) {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('No JSON in response');
+  return JSON.parse(m[0]);
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = 'Searching live prices…';
+  resultsArea.style.display = 'block';
+  ['id','used','alts','reviews'].forEach(t => {
+    document.getElementById('tab-' + t).innerHTML = loading('Analyzing with AI…', 'Claude Vision + Web Search active');
+  });
+
+  try {
+    // STEP 1: Vision identify
+    const identRaw = await callClaude(
+      `You are a fashion product identification expert. Analyze the image and return ONLY valid JSON, no markdown:
+{
+  "name": "exact product name",
+  "brand": "brand name",
+  "type": "product category (T-Shirt/Sneakers/Watch/Hat/etc)",
+  "colorway": "color or colorway name",
+  "emoji": "one relevant emoji",
+  "searchQuery": "precise Google search query to find this item with price",
+  "stockxQuery": "StockX search query",
+  "ebayQuery": "eBay search query",
+  "altQuery": "search query to find similar cheaper or alternative products"
+}`,
+      [{ role: "user", content: [
+        { type: "image", source: { type: "base64", media_type: mime, data: b64 } },
+        { type: "text", text: "Identify this item. Return JSON only, no explanation." }
+      ]}],
+      false
+    );
+    const item = parseJSON(identRaw);
+
+    document.getElementById('tab-id').innerHTML = loading('Searching live prices & stock…', `Identified: ${item.brand} ${item.name}`);
+    document.getElementById('tab-used').innerHTML = loading('Scanning StockX, eBay, Depop, GOAT…', 'Live web search active');
+    document.getElementById('tab-alts').innerHTML = loading('Finding similar styles…', 'Searching Amazon, Zara, H&M, ASOS…');
+    document.getElementById('tab-reviews').innerHTML = loading('Pulling Reddit & review sites…', 'Searching community opinions');
+
+    // STEP 2–4: Parallel searches
+    const [priceRaw, altRaw, revRaw] = await Promise.all([
+
+      callClaude(
+        `You are a live fashion price researcher. Use web_search to find CURRENT prices and stock status. Always search multiple sources. Return ONLY valid JSON:
+{
+  "retailPrice": 0,
+  "currency": "USD",
+  "retailSite": "brand website",
+  "officialLink": "direct product URL",
+  "inStock": true,
+  "valueScore": 65,
+  "valueLabel": "Fair value",
+  "valueSummary": "2 honest sentences about whether this is worth the price vs alternatives",
+  "usedOptions": [
+    {"platform":"StockX","name":"listing name","price":0,"condition":"DS/Used","savings":0,"url":"https://stockx.com/search?s=QUERY"},
+    {"platform":"eBay","name":"listing name","price":0,"condition":"Pre-owned","savings":0,"url":"https://www.ebay.com/sch/i.html?_nkw=QUERY"},
+    {"platform":"Depop","name":"listing name","price":0,"condition":"Good","savings":0,"url":"https://www.depop.com/search/?q=QUERY"},
+    {"platform":"Poshmark","name":"listing name","price":0,"condition":"Like new","savings":0,"url":"https://poshmark.com/search?query=QUERY"},
+    {"platform":"GOAT","name":"listing name","price":0,"condition":"Used","savings":0,"url":"https://www.goat.com/search?query=QUERY"},
+    {"platform":"Grailed","name":"listing name","price":0,"condition":"Gently worn","savings":0,"url":"https://www.grailed.com/shop?query=QUERY"}
+  ]
+}`,
+        [{ role: "user", content: `Search the web for the current retail price and stock status of: ${item.brand} ${item.name} ${item.colorway || ''}. Also search for current resale prices on StockX and eBay using these queries: "${item.stockxQuery}", "${item.ebayQuery}". Find real current prices and fill all fields with accurate data. Replace QUERY in URLs with actual encoded search terms.` }],
+        true
+      ),
+
+      callClaude(
+        `You are a fashion shopping assistant. Use web_search to find REAL products that look similar to what was described. Return ONLY valid JSON:
+{
+  "alternatives": [
+    {"name":"product name","brand":"brand","price":0,"where":"retailer","description":"why similar","url":"real product URL","priceRange":"budget"},
+    ...include 6 options from cheapest to most expensive, covering budget/mid/premium...
+  ]
+}`,
+        [{ role: "user", content: `Search for products that look similar to the ${item.brand} ${item.name}. Find real alternatives at different price points: very cheap (under $30), budget ($30-70), mid ($70-120), premium ($120-200), luxury ($200+). Search on Amazon, H&M, Zara, ASOS, Nordstrom, Uniqlo, and similar retailers. Use the query: "${item.altQuery}". Return real URLs.` }],
+        true
+      ),
+
+      callClaude(
+        `You are a review aggregator. Use web_search to find real community opinions. Return ONLY valid JSON:
+{
+  "avgRating": 4.2,
+  "totalReviews": 0,
+  "sentiment": "mostly positive",
+  "reviews": [
+    {"reviewer":"username","platform":"Reddit","rating":5,"title":"short headline","text":"2-3 sentence opinion","verified":true},
+    ...5-7 reviews from different sources...
+  ]
+}`,
+        [{ role: "user", content: `Search Reddit, YouTube comments, and review sites for real opinions about the ${item.brand} ${item.name}. Search for "${item.brand} ${item.name} review reddit" and "${item.brand} ${item.name} worth it". Find what people actually say about quality, comfort, sizing, and value for money. Summarize 5-7 real community opinions.` }],
+        true
+      )
+    ]);
+
+    let priceData = {}, altData = { alternatives: [] }, revData = { reviews: [] };
+    try { priceData = parseJSON(priceRaw); } catch(e) { console.warn('price parse fail', e); }
+    try { altData = parseJSON(altRaw); } catch(e) { console.warn('alt parse fail', e); }
+    try { revData = parseJSON(revRaw); } catch(e) { console.warn('rev parse fail', e); }
+
+    const retailPrice = priceData.retailPrice || item.retailPrice || 0;
+    const score = Math.max(0, Math.min(100, priceData.valueScore || 65));
+    const fillColor = meterColor(score);
+    const now = new Date().toLocaleTimeString();
+
+    // ── TAB 1: Identified item ──
+    document.getElementById('tab-id').innerHTML = `
+      <div class="id-card">
+        <div class="id-top">
+          <div class="id-emoji">${item.emoji || '👕'}</div>
+          <div class="id-info">
+            <h2>${item.name}</h2>
+            <div class="brand-line">${item.brand}${item.colorway ? ' · ' + item.colorway : ''}</div>
+            <div class="badges">
+              <span class="bdg bdg-type">${item.type}</span>
+              ${retailPrice ? `<span class="bdg bdg-price">$${retailPrice}</span>` : ''}
+              ${priceData.inStock !== undefined
+                ? priceData.inStock
+                  ? `<span class="bdg bdg-in">In stock</span>`
+                  : `<span class="bdg bdg-out">Out of stock</span>`
+                : ''}
+              <span class="bdg bdg-live">🔴 Live data</span>
+            </div>
+          </div>
+        </div>
+        ${priceData.officialLink ? `<div class="official-link">
+          Official: <a href="${priceData.officialLink}" target="_blank" rel="noopener">${priceData.retailSite || priceData.officialLink}</a>
+        </div>` : ''}
+        <div class="divider"></div>
+        <div class="val-meter">
+          <div class="val-row"><span>Value rating</span><strong>${priceData.valueLabel || 'Calculating…'}</strong></div>
+          <div class="track"><div class="fill" id="mfill" style="width:0%;background:${fillColor};"></div></div>
+          <div class="track-labels"><span>🔴 Overpriced</span><span>🟡 Fair value</span><span>🟢 Great deal</span></div>
+        </div>
+        ${priceData.valueSummary ? `<div class="val-summary">${priceData.valueSummary}</div>` : ''}
+        <div class="live-source">Prices fetched live via web search · ${now}</div>
+      </div>
+    `;
+    setTimeout(() => { const f = document.getElementById('mfill'); if (f) f.style.width = score + '%'; }, 80);
+
+    // ── TAB 2: Used & Resale ──
+    const usedHTML = (priceData.usedOptions || []).map(u => {
+      const savedAmt = u.savings || (retailPrice > 0 ? Math.max(0, Math.round(retailPrice - u.price)) : 0);
+      return `<a class="price-card" href="${u.url}" target="_blank" rel="noopener">
+        <div class="plat">${u.platform}</div>
+        <div class="pname">${u.name || item.name}</div>
+        <div class="pprice">${u.price ? '$' + u.price : '—'}</div>
+        <div class="pcond">${u.condition || ''}</div>
+        ${savedAmt > 0 ? `<div class="psave">Save ~$${savedAmt} vs retail</div>` : ''}
+        <div class="pmore">View listing →</div>
+      </a>`;
+    }).join('');
+    document.getElementById('tab-used').innerHTML = `
+      <div class="sec-label">Resale &amp; used · live search results</div>
+      <div class="price-grid">${usedHTML || '<div class="empty">No resale listings found for this item.</div>'}</div>
+      <div class="live-source" style="margin-top:14px;">Searched StockX · eBay · Depop · GOAT · Poshmark · Grailed via web</div>
+    `;
+
+    // ── TAB 3: Alternatives ──
+    const altsSorted = (altData.alternatives || []).sort((a, b) => a.price - b.price);
+    const altHTML = altsSorted.map(a => {
+      let pctLabel = '', pctColor = '#4ade80', barPct = 50;
+      if (retailPrice > 0 && a.price > 0) {
+        const pct = Math.round((a.price / retailPrice) * 100);
+        barPct = Math.min(100, pct);
+        if (pct < 50) { pctLabel = `${pct}% of retail`; pctColor = '#4ade80'; }
+        else if (pct < 90) { pctLabel = `${pct}% of retail`; pctColor = '#a3e635'; }
+        else if (pct <= 110) { pctLabel = `Similar price`; pctColor = '#f59e0b'; }
+        else { pctLabel = `${pct}% of retail`; pctColor = '#f87171'; }
+      }
+      return `<a class="price-card" href="${a.url}" target="_blank" rel="noopener">
+        <div class="plat">${a.where}</div>
+        <div class="pname">${a.brand} — ${a.name}</div>
+        <div class="pprice">${a.price ? '$' + a.price : '—'}</div>
+        <div class="pcond">${a.description || ''}</div>
+        ${pctLabel ? `<div class="pct-indicator">
+          <div class="pct-bar" style="width:${barPct}%;background:${pctColor};height:3px;border-radius:999px;"></div>
+          <div class="pct-label" style="color:${pctColor};font-size:11px;margin-top:2px;font-weight:500;">${pctLabel}</div>
+        </div>` : ''}
+        <div class="pmore">Shop now →</div>
+      </a>`;
+    }).join('');
+    document.getElementById('tab-alts').innerHTML = `
+      <div class="sec-label">Similar styles · sorted cheapest to most expensive</div>
+      <div class="price-grid">${altHTML || '<div class="empty">No alternatives found.</div>'}</div>
+      <div class="live-source" style="margin-top:14px;">Searched Amazon · Zara · H&amp;M · ASOS · Nordstrom · Uniqlo &amp; more</div>
+    `;
+
+    // ── TAB 4: Reviews ──
+    const avg = revData.avgRating || 0;
+    const sentColor = revData.sentiment && revData.sentiment.toLowerCase().includes('positive')
+      ? { bg: '#14532d', text: '#4ade80' }
+      : revData.sentiment && revData.sentiment.toLowerCase().includes('negative')
+        ? { bg: '#7f1d1d', text: '#f87171' }
+        : { bg: '#78350f', text: '#fbbf24' };
+
+    const summaryHTML = avg > 0 ? `
+      <div class="rev-summary">
+        <div>
+          <div class="rev-big-score">${avg.toFixed(1)}</div>
+        </div>
+        <div>
+          <div class="rev-stars">${stars(avg)}</div>
+          ${revData.totalReviews ? `<div class="rev-meta">${revData.totalReviews.toLocaleString()} reviews found</div>` : ''}
+          ${revData.sentiment ? `<span class="rev-sentiment" style="background:${sentColor.bg};color:${sentColor.text};">${revData.sentiment}</span>` : ''}
+        </div>
+      </div>` : '';
+
+    const revHTML = (revData.reviews || []).map(r => `
+      <div class="rev-card">
+        <div class="rev-header">
+          <div>
+            <div class="rev-author">${r.reviewer || 'Anonymous'}</div>
+            <div class="rev-platform">${r.platform || 'Community'}${r.verified ? ' · ✓ Verified' : ''}</div>
+          </div>
+          <div class="rev-rating">${r.rating || '—'}/5</div>
+        </div>
+        <div class="rev-stars-sm">${stars(r.rating)}</div>
+        ${r.title ? `<div class="rev-title">${r.title}</div>` : ''}
+        <div class="rev-body">${r.text || ''}</div>
+      </div>
+    `).join('');
+
+    document.getElementById('tab-reviews').innerHTML = `
+      ${summaryHTML}
+      <div class="sec-label">Community reviews &amp; opinions</div>
+      ${revHTML || '<div class="empty">No reviews found. Try a more widely-known item.</div>'}
+      <div class="live-source" style="margin-top:14px;">Searched Reddit · YouTube · review sites via live web search</div>
+    `;
+
+  } catch (err) {
+    console.error(err);
+    const errHTML = `<div class="err-box">⚠️ ${err.message || 'Analysis failed. Please try a clearer photo that shows the clothing item and any brand markings.'}</div>`;
+    ['id','used','alts','reviews'].forEach(t => {
+      document.getElementById('tab-' + t).innerHTML = errHTML;
+    });
+  }
+
+  analyzeBtn.disabled = false;
+  analyzeBtn.textContent = 'Identify item & search live prices →';
+});
+</script>
+</body>
+</html>
